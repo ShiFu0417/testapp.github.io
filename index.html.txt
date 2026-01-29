@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Trip 2026</title>
+    
+    <!-- iOS PWA Settings -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Trip 2026">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/201/201623.png">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'media',
+            theme: {
+                extend: {
+                    padding: { 'safe-top': 'env(safe-area-inset-top)', 'safe-bottom': 'env(safe-area-inset-bottom)' },
+                    margin: { 'safe-bottom': 'env(safe-area-inset-bottom)' }
+                }
+            }
+        }
+    </script>
+
+    <!-- React & Babel (讓瀏覽器能直接看懂 JSX) -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Markdown Parser -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+    <style>
+        body { 
+            -webkit-tap-highlight-color: transparent; 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Helvetica, Arial, sans-serif; 
+            background-color: #F2F2F7;
+        }
+        @media (prefers-color-scheme: dark) {
+            body { background-color: #000000; }
+        }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.25, 1, 0.5, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+        
+        /* Accordion transition */
+        .accordion-content { max-height: 0; overflow: hidden; transition: max-height 0.35s cubic-bezier(0.4, 0, 0.2, 1); }
+        .accordion-content.open { max-height: 2500px; transition: max-height 0.5s ease-in; }
+        .rotate-icon { transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .rotate-icon.open { transform: rotate(90deg); }
+        
+        /* Apple UI List Group Style */
+        .apple-list-group {
+            background-color: white;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+        .dark .apple-list-group {
+            background-color: #1C1C1E;
+        }
+        .apple-list-item {
+            border-bottom: 0.5px solid rgba(0,0,0,0.1);
+        }
+        .dark .apple-list-item {
+            border-bottom: 0.5px solid rgba(255,255,255,0.1);
+        }
+        .apple-list-item:last-child { border-bottom: none; }
+
+        @media (prefers-color-scheme: dark) {
+            iframe.map-frame { filter: invert(90%) hue-rotate(180deg); }
+        }
+        .safe-top { padding-top: env(safe-area-inset-top); }
+        .safe-bottom { margin-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Data ---
+        const CITY_COORDS = { 'Taipei': {lat:25.033,lng:121.565}, 'Paris': {lat:48.856,lng:2.352}, 'Malta': {lat:35.937,lng:14.375}, 'Venice': {lat:45.440,lng:12.315}, 'Florence': {lat:43.769,lng:11.255}, 'Rome': {lat:41.902,lng:12.496} };
+
+        const TRIP = [
+            { id:'d0', date:'1/31', wk:'週六', city:'Taipei', t:'20°', c:'Cloudy', tl:[
+                {tm:'23:00',ti:'TPE → DXB',d:'Emirates EK367 | 桃園 T2 出發 (轉機 2h 55m)',loc:'Taoyuan Airport Terminal 2',l:[{t:'航班狀態',u:'https://www.emirates.com/tw/chinese/manage-booking/flight-status/'}]}
+            ]},
+            { id:'d1', date:'2/1', wk:'週日', city:'Paris', t:'6°', c:'Rain', tl:[
+                {tm:'12:25',ti:'抵達巴黎 CDG',d:'Emirates EK073 | 抵達 Terminal 2C',loc:'CDG Airport Terminal 2C', desc:'出關後依照指示搭乘 RER B 線進市區。'},
+                {tm:'13:30',ti:'機場往市區',d:'RER B -> Chatelet Les Halles (€11.8)',loc:'Chatelet Les Halles', desc:'亦可叫 Uber/Bolt，費用約 €52-65。',l:[{t:'RATP 官網',u:'https://www.ratp.fr/en/titres-et-tarifs'}]},
+                {tm:'15:00',ti:'Check-in',d:'15 Rue des Halles. 買 Navigo Easy 卡',loc:'15 Rue des Halles',desc:'位於市中心的公寓，交通便利，樓下就是咖啡館。Navigo Easy 空卡 €2，可儲值 Ticket t+。',tel:'+33 1 23 45 67 89'},
+                {tm:'PM',ti:'Bastille 漫步',d:'Bastille 廣場、Village St. Paul',loc:'Place de la Bastille',desc:'充滿活力的區域，有許多古董店和歷史遺跡。'}
+            ]},
+            { id:'d2', date:'2/2', wk:'週一', city:'Paris', t:'7°', c:'Cloudy', tl:[
+                {tm:'09:00',ti:'羅浮宮',d:'Carrousel入口進. 看蒙娜麗莎',loc:'Carrousel du Louvre',imp:1,desc:'世界四大博物館之首。從 Carrousel 購物中心入口進入可避開金字塔人潮。重點：Denon 館 (蒙娜麗莎, 勝利女神)。',tel:'+33 1 40 20 53 17',l:[{t:'官方購票',u:'https://www.ticketlouvre.fr/'}]},
+                {tm:'Lunch',ti:'Le Fumoir',d:'質感餐酒館',loc:'Le Fumoir Paris',eat:1,desc:'位於羅浮宮正對面，氛圍優雅復古，充滿書卷氣息的巴黎人氣餐廳。',menu:'鴨胸 (Magret de canard), 韃靼牛肉 (Tartare), 雞尾酒',tel:'+33 1 42 92 00 24',l:[{t:'官網菜單',u:'http://lefumoir.com/'}]},
+                {tm:'PM',ti:'歌劇院',d:'Opéra Garnier',loc:'Palais Garnier',desc:'加尼葉歌劇院，富麗堂皇的巴洛克建築，《歌劇魅影》的故事背景。',tel:'+33 1 71 25 24 23',l:[{t:'參觀購票',u:'https://www.operadeparis.fr/en/visits/palais-garnier'}]},
+                {tm:'Dinner',ti:'Pedra Alta',d:'必吃海鮮盤! Riz Grillé',loc:'Pedra Alta Boulogne',eat:1,desc:'份量驚人的葡萄牙海鮮餐廳，是巴黎CP值最高的海鮮首選。(位於 Boulogne 分店)',menu:'Riz Grillé (海鮮燉飯), Plateau Royal (皇家海鮮盤)',tel:'+33 1 46 05 15 65',l:[{t:'Tripadvisor',u:'https://www.tripadvisor.com.tw/Restaurant_Review-g1079383-d1326442-Reviews-Pedra_Alta-Boulogne_Billancourt_Hauts_de_Seine_Ile_de_France.html'}]}
+            ]},
+            { id:'d3', date:'2/3', wk:'週二', city:'Paris', t:'5°', c:'Sunny', tl:[
+                {tm:'08:00',ti:'往凡爾賽',d:'RER C -> Versailles Château Rive Gauche',loc:'Gare de Versailles Château Rive Gauche',desc:'搭乘 RER C (VICK 班次) 雙層火車前往，車程約40分鐘。',l:[{t:'交通資訊',u:'https://en.chateauversailles.fr/plan-your-visit/getting-here'}]},
+                {tm:'09:00',ti:'凡爾賽宮',d:'需預約 Passport 票. 花園租球車',loc:'Palace of Versailles',imp:1,desc:'路易十四的奢華宮殿，Passport 票包含宮殿與花園(€25-30)。建議租高爾夫球車遊覽廣大花園。',tel:'+33 1 30 83 78 00',l:[{t:'官方購票',u:'https://ticket.chateauversailles.fr/'}]},
+                {tm:'PM',ti:'鐵塔 & 遊船',d:'Bateaux-Mouches (Pont de l\'Alma)',loc:'Bateaux-Mouches',desc:'搭乘塞納河遊船，從水上欣賞巴黎鐵塔與兩岸風光。碼頭位於 Pont de l\'Alma。',tel:'+33 1 42 25 96 10',l:[{t:'船票預約',u:'https://www.bateaux-mouches.fr/en'}]}
+            ]},
+            { id:'d4', date:'2/4', wk:'週三', city:'Paris', t:'6°', c:'Cloudy', tl:[
+                {tm:'AM',ti:'蒙馬特',d:'愛之牆 -> 聖心堂 -> 小丘廣場',loc:'Sacré-Cœur',desc:'充滿藝術氣息的山丘。路線：Abbesses站 (愛之牆) -> 纜車上山 -> 聖心堂 -> 小丘廣場 (畫家村) -> 達利達廣場 -> 紅磨坊。',tel:'+33 1 53 41 89 00',l:[{t:'聖心堂官網',u:'https://www.sacre-coeur-montmartre.com/'}]},
+                {tm:'Snack',ti:'Breizh Café',d:'法式可麗餅',loc:'Breizh Café',eat:1,desc:'使用布列塔尼蕎麥粉製作的正宗法式薄餅(Galette)。',menu:'Classic Jambon Fromage (火腿起司蛋), 蘋果酒 (Cidre)',tel:'+33 1 42 72 13 77',l:[{t:'官網',u:'https://www.breizhcafe.com/'}]},
+                {tm:'PM',ti:'拉佛爺百貨',d:'Gourmet館買鵝肝醬、馬卡龍',loc:'Galeries Lafayette Haussmann',buy:1,desc:'巴黎最著名的百貨公司，圓頂建築極美。必去對面的「Gourmet 美食館」B1 買伴手禮 (Pierre Hermé, 鵝肝醬)。',tel:'+33 1 42 82 34 56',l:[{t:'百貨官網',u:'https://haussmann.galerieslafayette.com/en/'}]},
+                {tm:'Dinner',ti:'L\'Escargot',d:'百年蝸牛餐廳',loc:'L\'Escargot Montorgueil',desc:'創立於1832年的金蝸牛餐廳，是體驗法式蝸牛料理的經典老店。',menu:'Escargots de Bourgogne (勃艮第蝸牛), 鴨腿',tel:'+33 1 42 36 83 51',l:[{t:'餐廳官網',u:'https://escargotmontorgueil.com/'}]}
+            ]},
+            { id:'d5', date:'2/5', wk:'週四', city:'Malta', t:'15°', c:'Sunny', tl:[
+                {tm:'10:00',ti:'CDG → MLA',d:'EasyJet | 12:55 抵達',loc:'Malta International Airport', desc:'從 CDG Terminal 2B 出發。抵達馬爾他後建議使用 Bolt App 叫車前往 Sliema (約 €15-20)。',l:[{t:'EasyJet',u:'https://www.easyjet.com/'}]},
+                {tm:'14:00',ti:'Sliema Check-in',d:'47 Tigné Seafront',loc:'47 Tigné Seafront',desc:'位於海濱大道的公寓，擁有絕佳海景，對面就是瓦萊塔。'},
+                {tm:'PM',ti:'瓦萊塔漫步',d:'Triton Fountain, City Gate',loc:'Valletta City Gate',desc:'歐洲最小的首都，全城世界文化遺產。經過特里同噴泉與城門進入。'},
+                {tm:'15:30',ti:'Upper Barrakka',d:'上巴拉卡花園',loc:'Upper Barrakka Gardens',desc:'瓦萊塔最佳觀景點，可俯瞰大港 (Grand Harbour) 與對面的三姐妹城。有電梯可直達港口。'},
+                {tm:'16:00',ti:'聖約翰大教堂',d:'極致華麗巴洛克',loc:'St John\'s Co-Cathedral',imp:1,desc:'外觀樸素，內部卻金碧輝煌。必看卡拉瓦喬名畫《被斬首的聖施洗者約翰》。門票 €15，16:15 最後入場。',tel:'+356 2122 0536',l:[{t:'參觀資訊',u:'https://www.stjohnscocathedral.com/'}]}
+            ]},
+            { id:'d6', date:'2/6', wk:'週五', city:'Malta', t:'16°', c:'Sunny', tl:[
+                {tm:'AM',ti:'Mdina 古城',d:'權力遊戲拍攝地',loc:'Mdina Gate',imp:1,desc:'被稱為「寂靜之城」(Silent City)，中世紀風貌保存完整，是《權力遊戲》第一季君臨城取景地。',l:[{t:'Mdina 介紹',u:'https://www.visitmalta.com/en/a/mdina/'}]},
+                {tm:'Break',ti:'Fontanella',d:'城牆蛋糕店，風景絕佳',loc:'Fontanella Tea Garden',eat:1,desc:'位於 Mdina 城牆上的茶室，擁有眺望馬爾他全島的無敵視野。',menu:'經典巧克力蛋糕 (Classic Chocolate Cake), 草莓塔',tel:'+356 2145 4264',l:[{t:'Menu',u:'https://fontanellateagarden.com/'}]},
+                {tm:'PM',ti:'St. Julian\'s',d:'Balluta Bay 散步',loc:'Balluta Bay',desc:'熱鬧的夜生活區，擁有美麗的新哥德式教堂與海灣步道。晚餐推薦 Yana\'s 或 Tapea。'}
+            ]},
+            { id:'d7', date:'2/7', wk:'週六', city:'Malta', t:'15°', c:'Cloudy', tl:[
+                {tm:'08:45',ti:'往 Gozo 島',d:'Cirkewwa 搭渡輪',loc:'Cirkewwa Ferry Terminal',desc:'前往馬爾他第二大島。搭乘 Gozo Channel Line，約 25 分鐘。',tel:'+356 2210 9000',l:[{t:'渡輪時刻表',u:'https://www.gozochannel.com/ferry/schedule/'}]},
+                {tm:'AM',ti:'Victoria Citadel',d:'島中心城堡',loc:'The Citadel Victoria',desc:'Gozo 島的制高點要塞，可 360 度俯瞰全島景色。'},
+                {tm:'Noon',ti:'Dwejra & Inland Sea',d:'內海搭小船',loc:'Dwejra Bay',desc:'雖然藍窗已倒塌，但在此處搭乘小船 (€4) 穿過岩洞進入開放水域 (Inland Sea) 的體驗非常獨特。'}
+            ]},
+            { id:'d8', date:'2/8', wk:'週日', city:'Malta', t:'16°', c:'Sunny', tl:[
+                {tm:'AM',ti:'Marsaxlokk 魚市',d:'週日限定! 拍彩色漁船',loc:'Marsaxlokk Market',imp:1,desc:'傳統小漁村，週日有大型市集，販賣海鮮、紀念品。海面上停滿彩色的 Luzzu 漁船 (船頭有荷魯斯之眼)。'},
+                {tm:'Noon',ti:'藍洞',d:'搭船賞海蝕洞',loc:'Blue Grotto Malta',desc:'以海水湛藍聞名的海蝕洞群，天氣好時海水會發出螢光藍。船票約 €8。',l:[{t:'藍洞資訊',u:'https://www.visitmalta.com/en/a/blue-grotto/'}]},
+                {tm:'PM',ti:'三姐妹城',d:'搭水上計程車去 Vittoriosa',loc:'The Three Cities',desc:'與瓦萊塔對望的三座古城 (Vittoriosa, Senglea, Cospicua)。可從瓦萊塔搭水上計程車 (€2.8) 前往。'}
+            ]},
+            { id:'d9', date:'2/9', wk:'週一', city:'Venice', t:'8°', c:'Rain', tl:[
+                {tm:'17:20',ti:'MLA → VCE',d:'Ryanair | 19:15 抵達',loc:'Venice Marco Polo Airport',l:[{t:'Ryanair',u:'https://www.ryanair.com/'}]},
+                {tm:'Trans',ti:'機場進城',d:'買 Rolling Venice Card',loc:'Venice Marco Polo Airport',desc:'在機場購買 Rolling Venice Card (€6, 限6-29歲)，可享 72hr ACTV 交通卡優惠價 (€27)。搭巴士進 Piazzale Roma 再轉船。',l:[{t:'Venezia Unica',u:'https://www.veneziaunica.it/en/e-commerce/services'}]},
+                {tm:'Hotel',ti:'Check-in',d:'Carnival Palace (Cannaregio區)',loc:'Carnival Palace Hotel',desc:'位於 Tre Archi 碼頭旁，環境清幽的高級飯店。',tel:'+39 041 244 1611'}
+            ]},
+            { id:'d10', date:'2/10', wk:'週二', city:'Venice', t:'9°', c:'Cloudy', tl:[
+                {tm:'AM',ti:'里亞托橋',d:'威尼斯地標',loc:'Ponte di Rialto',desc:'橫跨大運河最古老的橋樑，周邊商店林立，是拍攝大運河的最佳角度。'},
+                {tm:'Sight',ti:'沉船書店',d:'貢多拉裝書',loc:'Libreria Acqua Alta',desc:'被譽為世界最美書店之一，用貢多拉船和浴缸裝書以防淹水。'},
+                {tm:'PM',ti:'聖馬可廣場',d:'大教堂、總督宮',loc:'Piazza San Marco',imp:1,desc:'拿破崙稱之為「歐洲最美的客廳」。參觀聖馬可大教堂 (金碧輝煌的馬賽克) 與總督宮 (Doge\'s Palace)。',l:[{t:'大教堂預約',u:'https://basilicasanmarco.skiperformance.com/en/store#/en/buy'},{t:'總督宮購票',u:'https://palazzoducale.visitmuve.it/en/pianifica-la-tua-visita/tickets/'}]},
+                {tm:'Break',ti:'花神咖啡',d:'世界最古老咖啡館',loc:'Caffè Florian',desc:'創業於1720年，裝潢華麗。室內下午茶體驗無價。',tel:'+39 041 520 5641',l:[{t:'官網',u:'https://www.caffeflorian.com/en/'}]},
+                {tm:'Shop',ti:'Despar Teatro Italia',d:'最美超市',loc:'Despar Teatro Italia',desc:'由古老劇院改建的超市，保留了劇院的天花板壁畫與舞台，非常特別。'}
+            ]},
+            { id:'d11', date:'2/11', wk:'週三', city:'Venice', t:'8°', c:'Sunny', tl:[
+                {tm:'09:00',ti:'Murano 玻璃島',d:'搭 4.1/4.2 號船',loc:'Murano',desc:'以玻璃工藝聞名的小島，可參觀玻璃工廠吹製過程。',l:[{t:'水上巴士圖',u:'https://actv.avmspa.it/en/content/water-bus-service-timetable-0'}]},
+                {tm:'11:00',ti:'Burano 彩色島',d:'搭 12 號船',loc:'Burano',imp:1,desc:'以蕾絲工藝和色彩繽紛的房子聞名，彷彿置身童話世界。'},
+                {tm:'Dinner',ti:'Trattoria Bar Pontini',d:'海鮮義大利麵',loc:'Trattoria Bar Pontini',eat:1,desc:'運河邊的高人氣餐廳，海鮮新鮮，建議提前排隊。',menu:'海鮮義大利麵 (Spaghetti allo Scoglio), 墨魚麵',tel:'+39 041 714123',l:[{t:'Tripadvisor',u:'https://www.tripadvisor.com/Restaurant_Review-g187870-d2326732-Reviews-Trattoria_Bar_Pontini-Venice_Veneto.html'}]}
+            ]},
+            { id:'d12', date:'2/12', wk:'週四', city:'Florence', t:'11°', c:'Sunny', tl:[
+                {tm:'11:05',ti:'Italo 火車',d:'往 Florence (13:20抵達)',loc:'Venezia Santa Lucia',desc:'搭乘 Italo 8911 班次。抵達後前往 Piazza della Stazione 公寓 check-in。',l:[{t:'Italo 官網',u:'https://www.italotreno.it/en'}]},
+                {tm:'Lunch',ti:'Trattoria Zà Zà',d:'必吃丁骨牛排',loc:'Trattoria Zà Zà',eat:1,desc:'佛羅倫斯必吃的丁骨牛排老店，裝潢復古，份量十足。',menu:'丁骨牛排 (Bistecca alla Fiorentina) - 建議點1kg',tel:'+39 055 215411',l:[{t:'官網訂位',u:'https://www.trattoriazaza.it/'}]},
+                {tm:'PM',ti:'Fiesole 山城',d:'搭7號公車看全景',loc:'Fiesole',desc:'搭乘 Bus 7 (約30-40分) 前往近郊山城，可俯瞰整個托斯卡尼平原與佛羅倫斯全景，適合看夕陽。'}
+            ]},
+            { id:'d13', date:'2/13', wk:'週五', city:'Florence', t:'12°', c:'Cloudy', tl:[
+                {tm:'Lunch',ti:'Da Nerbone',d:'必吃牛肚包 (中央市場)',loc:'Mercato Centrale Firenze',eat:1,desc:'位於中央市場內的百年老攤，牛肚燉得軟爛入味。14:00 收攤。',menu:'牛肚包 (Lampredotto), 牛肉包 (Bollito)',l:[{t:'中央市場',u:'https://www.mercatocentrale.it/florence/'}]},
+                {tm:'PM',ti:'百花大教堂',d:'登頂需預約',loc:'Santa Maria del Fiore',imp:1,desc:'文藝復興的象徵，巨大的紅色圓頂。登頂需購買 Brunelleschi Pass 並預約時段。',tel:'+39 055 230 2885',l:[{t:'官方購票',u:'https://duomo.firenze.it/en/home'}]},
+                {tm:'Sight',ti:'老橋',d:'金飾店古橋',loc:'Ponte Vecchio',desc:'阿諾河上最古老的橋，橋上兩側都是金飾珠寶店。'}
+            ]},
+            { id:'d14', date:'2/14', wk:'週六', city:'Florence', t:'12°', c:'Sunny', tl:[
+                {tm:'09:53',ti:'往比薩',d:'火車到 Pisa S. Rossore',loc:'Pisa San Rossore',desc:'搭乘區間車前往 Pisa S. Rossore 站，下車走路 5 分鐘即達斜塔 (比中央車站近)。',l:[{t:'義鐵 Trenitalia',u:'https://www.trenitalia.com/en.html'}]},
+                {tm:'AM',ti:'比薩斜塔',d:'奇蹟廣場拍照',loc:'Leaning Tower of Pisa',imp:1,desc:'世界七大奇景之一。登塔需寄放包包。',tel:'+39 050 835011',l:[{t:'登塔購票',u:'https://www.opapisa.it/en/tickets/buy/'}]},
+                {tm:'Dinner',ti:'Osteria Pastella',d:'車輪起司松露麵',loc:'Osteria Pastella',eat:1,desc:'以巨型帕瑪森起司輪現場拌炒的松露義大利麵聞名，視覺味覺雙重享受。',menu:'松露起司義大利麵 (Tagliatelle al Tartufo)',tel:'+39 055 264 5917',l:[{t:'官網',u:'https://www.osteriapastella.it/'}]}
+            ]},
+            { id:'d15', date:'2/15', wk:'週日', city:'Rome', t:'13°', c:'Sunny', tl:[
+                {tm:'09:28',ti:'Italo 火車',d:'往 Roma Termini (11:05抵達)',loc:'Roma Termini',desc:'搭乘 Italo 8903 班次。抵達羅馬 Termini 車站。住宿位於西班牙廣場附近。',l:[{t:'Italo 官網',u:'https://www.italotreno.it/en'}]},
+                {tm:'Hotel',ti:'Check-in',d:'近西班牙廣場',loc:'Via dei Due Macelli 31',desc:'交通便利，附近是購物精華區。',tel:'+39 06 679 4223'},
+                {tm:'Snack',ti:'Pompi Tiramisù',d:'必吃提拉米蘇',loc:'Pompi Tiramisù',eat:1,desc:'羅馬著名的提拉米蘇專賣店，口味選擇多，推薦經典原味或草莓。',menu:'經典提拉米蘇, 草莓提拉米蘇',tel:'+39 06 6880 1779',l:[{t:'官網',u:'https://barpompi.it/'}]}
+            ]},
+            { id:'d16', date:'2/16', wk:'週一', city:'Rome', t:'14°', c:'Sunny', tl:[
+                {tm:'13:20',ti:'羅馬競技場',d:'預約 Arena Floor',loc:'Colosseum',imp:1,desc:'古羅馬帝國的象徵。已預約 13:20 Arena Floor (競技場平臺) 門票，可進入中心感受角鬥士視角。',tel:'+39 06 3996 7700',l:[{t:'官方購票',u:'https://www.coopculture.it/en/products/ticket-colosseum-roman-forum-palatine_24h/'}]},
+                {tm:'PM',ti:'許願池',d:'Fontana di Trevi',loc:'Trevi Fountain',imp:1,desc:'羅馬最大的巴洛克風格噴泉，傳說背對噴泉投擲硬幣可重返羅馬。'},
+                {tm:'Dinner',ti:'CiPASSO',d:'高人氣餐廳',loc:'CiPASSO Vineria Bistrot',desc:'氣氛極佳的現代義式餐酒館，料理精緻，服務親切。',menu:'章魚腳 (Octopus), 羅馬培根蛋麵 (Carbonara)',tel:'+39 06 6889 2620',l:[{t:'官網訂位',u:'https://www.cipasso.com/'}]}
+            ]},
+            { id:'d17', date:'2/17', wk:'週二', city:'Rome', t:'14°', c:'Cloudy', tl:[
+                {tm:'14:00',ti:'梵蒂岡博物館',d:'西斯汀禮拜堂',loc:'Vatican Museums',imp:1,desc:'世界最偉大的博物館之一，已預約 14:00。必看米開朗基羅的《創世紀》與《最後的審判》。',tel:'+39 06 6988 4676',l:[{t:'官方購票',u:'https://tickets.museivaticani.va/home'}]},
+                {tm:'16:30',ti:'聖彼得大教堂',d:'世界最大教堂',loc:'St. Peter\'s Basilica',desc:'天主教的中心，內部宏偉莊嚴，有米開朗基羅的《聖殤》。'},
+                {tm:'18:00',ti:'聖天使堡',d:'Castel Sant\'Angelo',loc:'Castel Sant\'Angelo',desc:'原為哈德良皇帝陵寢，後改為城堡。從聖天使橋拍攝城堡是經典角度。'},
+                {tm:'Coffee',ti:'金杯咖啡',d:'必喝 Coffee Granita',loc:'Tazza d\'Oro',eat:1,desc:'萬神殿旁的老字號咖啡店，被譽為全羅馬最好喝的咖啡。',menu:'咖啡冰沙 (Granita di Caffè)',tel:'+39 06 678 9792',l:[{t:'官網',u:'https://www.tazzadorocoffeeshop.com/'}]}
+            ]},
+            { id:'d18', date:'2/18', wk:'週三', city:'Rome', t:'13°', c:'Rain', tl:[
+                {tm:'Lunch',ti:'Piccolo Buco',d:'超人氣 Pizza',loc:'Piccolo Buco',eat:1,desc:'許願池旁排隊名店，以長時間發酵的餅皮聞名。',menu:'瑪格麗特披薩, 黃色番茄披薩',tel:'+39 06 6938 0163',l:[{t:'官網',u:'https://www.pizzeriapiccolobuco.it/'}]},
+                {tm:'17:00',ti:'機場快線',d:'Termini -> FCO 機場',loc:'Fiumicino Airport',desc:'搭乘 Leonardo Express 直達機場 (約 €14, 32分鐘)。',l:[{t:'Leonardo Express',u:'https://www.trenitalia.com/en/services/leonardo-express.html'}]},
+                {tm:'20:50',ti:'FCO → DXB',d:'Emirates 返程',loc:'Fiumicino Airport Terminal 3',l:[{t:'Emirates',u:'https://www.emirates.com/'}]}
+            ]},
+            { id:'d19', date:'2/19', wk:'週四', city:'Taipei', t:'21°', c:'Cloudy', tl:[
+                {tm:'20:40',ti:'抵達台北',d:'旅程結束！',loc:'Taoyuan Airport'}
+            ]}
+        ];
+
+        const FLIGHTS = [
+            {t:'1/31 · TPE → DXB',v:'23:00',n:'Emirates EK367', u:'https://www.emirates.com/tw/chinese/manage-booking/flight-status/'}, 
+            {t:'2/1 · DXB → CDG',v:'12:25',n:'Emirates EK073 (Arr T2C)', u:'https://www.emirates.com/tw/chinese/manage-booking/flight-status/'},
+            {t:'2/5 · CDG → MLA',v:'10:00',n:'EasyJet (Dep T2B)', u:'https://www.easyjet.com/'}, 
+            {t:'2/9 · MLA → VCE',v:'17:20',n:'Ryanair', u:'https://www.ryanair.com/'},
+            {t:'2/18 · FCO → DXB',v:'20:50',n:'Emirates (Dep T3)', u:'https://www.emirates.com/tw/chinese/manage-booking/flight-status/'}, 
+            {t:'2/19 · DXB → TPE',v:'20:40',n:'Arr Taipei'}
+        ];
+
+        const HOTELS = [
+            {t:'Paris',v:'Apartment',d:'15 Rue des Halles',n:'Booking',l:'15 Rue des Halles', dt:'2/1 - 2/5 (4晚)', u:'https://www.booking.com'},
+            {t:'Malta',v:'Sliema Apt',d:'47 Tigné Seafront',n:'Booking',l:'47 Tigné Seafront', dt:'2/5 - 2/9 (4晚)', u:'https://www.booking.com'},
+            {t:'Venice',v:'Carnival Palace',d:'Cannaregio, 929',n:'Agoda',l:'Carnival Palace Hotel', dt:'2/9 - 2/12 (3晚)', u:'https://www.agoda.com'},
+            {t:'Florence',v:'Station Apt',d:'Piazza della Stazione',n:'Booking',l:'Piazza della Stazione 1 Firenze', dt:'2/12 - 2/15 (3晚)', u:'https://www.booking.com'},
+            {t:'Rome',v:'Spagna Apt',d:'Via dei Due Macelli',n:'Agoda',l:'Via dei Due Macelli 31 Roma', dt:'2/15 - 2/18 (3晚)', u:'https://www.agoda.com'}
+        ];
+
+        const AI_STORAGE_KEY = 'trip2026_ai_data';
+        const API_KEY_STORAGE_KEY = 'trip2026_gemini_key';
+
+        // --- App Component ---
+        function App() {
+            const [currentTab, setCurrentTab] = useState('trip');
+            const [expandedDayId, setExpandedDayId] = useState('d1');
+            const [showInstallModal, setShowInstallModal] = useState(false);
+            const [showApiModal, setShowApiModal] = useState(false);
+            const [toast, setToast] = useState({ show: false, message: '' });
+            const [weatherModal, setWeatherModal] = useState({ visible: false, city: null, loading: false, data: null, error: false });
+            const [aiData, setAiData] = useState(null);
+            const [apiKey, setApiKey] = useState('');
+            const [isFetchingAi, setIsFetchingAi] = useState(false);
+
+            useEffect(() => {
+                try {
+                    const storedAi = localStorage.getItem(AI_STORAGE_KEY);
+                    if (storedAi) setAiData(JSON.parse(storedAi));
+                    const storedKey = localStorage.getItem(API_KEY_STORAGE_KEY);
+                    if (storedKey) setApiKey(storedKey);
+                } catch (e) { console.log('Storage access failed'); }
+            }, []);
+
+            useEffect(() => { window.scrollTo(0, 0); }, [currentTab]);
+
+            const showToastMessage = (msg) => {
+                setToast({ show: true, message: msg });
+                setTimeout(() => setToast({ show: false, message: '' }), 3000);
+            };
+
+            const toggleInstallGuide = () => setShowInstallModal(!showInstallModal);
+            const toggleApiModal = () => setShowApiModal(!showApiModal);
+            
+            const saveApiKeyFunc = (keyInput) => {
+                const key = keyInput.trim();
+                if (key) {
+                    try { localStorage.setItem(API_KEY_STORAGE_KEY, key); } catch(e) {
+                        showToastMessage("無法儲存 Key");
+                        return;
+                    }
+                    setApiKey(key);
+                    toggleApiModal();
+                    showToastMessage("Key 已儲存！");
+                    if(currentTab === 'guide') fetchAiGuide(getCurrentCity(), true, key);
+                } else {
+                    showToastMessage("請輸入有效的 API Key");
+                }
+            };
+
+            const toggleDay = (id) => setExpandedDayId(expandedDayId === id ? null : id);
+
+            const openWeather = (city, e) => {
+                if(e) e.stopPropagation();
+                setWeatherModal({ visible: true, city, loading: true, data: null, error: false });
+                const coords = CITY_COORDS[city];
+                if(!coords) { setWeatherModal({ visible: true, city, loading: false, data: null, error: true }); return; }
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto`)
+                    .then(res => res.json()).then(data => setWeatherModal(prev => ({ ...prev, loading: false, data: data })))
+                    .catch(() => setWeatherModal(prev => ({ ...prev, loading: false, error: true })));
+            };
+
+            const closeWeather = () => setWeatherModal(prev => ({ ...prev, visible: false }));
+
+            const getCurrentCity = () => {
+                const today = new Date();
+                const dateStr = `${today.getMonth() + 1}/${today.getDate()}`;
+                const match = TRIP.find(d => d.date === dateStr);
+                return match ? match.city : 'Europe';
+            };
+
+            const fetchAiGuide = async (city, force = false, keyOverride = null) => {
+                if (isFetchingAi && !force) return;
+                setIsFetchingAi(true);
+                const keyToUse = keyOverride || apiKey;
+                if (!keyToUse) { setIsFetchingAi(false); return; }
+
+                const today = new Date();
+                const dateStr = `${today.getMonth() + 1}/${today.getDate()}`;
+                const todayItinerary = TRIP.find(d => d.date === dateStr);
+                let itineraryContext = "No specific itinerary data found.";
+                if (todayItinerary && todayItinerary.tl) {
+                    itineraryContext = todayItinerary.tl.map(item => `- ${item.ti}: ${item.d}`).join('\n');
+                }
+
+                const prompt = `You are a professional local tour guide in ${city}. 
+                Here is the traveler's itinerary for today (${dateStr}):
+                ${itineraryContext}
+
+                Please provide a concise, high-value daily guide in Traditional Chinese (繁體中文).
+                
+                CRITICAL: You MUST separate your response into THREE distinct parts using the delimiter "|||".
+                Format:
+                [Part 1: Daily Briefing] ||| [Part 2: Transport Guide] ||| [Part 3: Shopping Guide]
+
+                Content Requirements:
+                Part 1: Daily Briefing
+                - Weather outfit advice for today.
+                - 1-2 Specific hacks for today's spots (e.g. "enter Louvre via Carrousel").
+                - 1 Nearby non-touristy food gem recommendation.
+
+                Part 2: Transport Guide (Auto-generated based on itinerary)
+                - SPECIFICALLY how to get between the places in today's itinerary.
+                - Which tickets to buy? Any apps to download?
+
+                Part 3: Shopping Guide (Auto-generated based on itinerary)
+                - What unique things to buy NEAR today's spots? (Not generic city souvenirs).
+                - Specific shop names if possible.
+
+                Keep each part concise and use emojis. Do not output Markdown headers like "# Part 1".`;
+
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 15000);
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${keyToUse}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+                        signal: controller.signal
+                    });
+                    clearTimeout(timeoutId);
+                    if (!response.ok) throw new Error(response.statusText);
+                    const data = await response.json();
+                    if (data.candidates && data.candidates.length > 0) {
+                        const content = data.candidates[0].content.parts[0].text;
+                        const saveData = { date: new Date().toLocaleDateString(), city: city, content: content };
+                        setAiData(saveData);
+                        try { localStorage.setItem(AI_STORAGE_KEY, JSON.stringify(saveData)); } catch(e){}
+                    } else { throw new Error('No content'); }
+                } catch (error) {
+                    showToastMessage("連線不穩，已載入離線攻略");
+                    const mockContent = `**🌤️ 天氣與穿搭**\n${city} 早晚溫差大，建議洋蔥式穿搭。\n\n**💡 行程小撇步**\n避開尖峰時段用餐。\n|||**🚗 交通建議**\n使用 Google Maps 或當地交通 App 查詢最佳路線。\n|||**🛍️ 購物推薦**\n建議在景點附近的巷弄小店尋找紀念品。`;
+                    setAiData({ date: new Date().toLocaleDateString(), city: city, content: mockContent });
+                } finally { setIsFetchingAi(false); }
+            };
+
+            return (
+                <div className="bg-[#F2F2F7] dark:bg-black text-black dark:text-white transition-colors duration-300 pb-24 min-h-screen font-sans">
+                    {/* Toast */}
+                    <div id="toast" className={`fixed top-14 left-1/2 -translate-x-1/2 z-[100] bg-white/90 dark:bg-[#2C2C2E]/90 backdrop-blur-md text-black dark:text-white px-6 py-3 rounded-full text-[15px] font-medium shadow-2xl transition-all duration-300 flex items-center gap-2 ${toast.show ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 -translate-y-4 scale-95 pointer-events-none'}`}>
+                        {toast.message}
+                    </div>
+
+                    {/* Header */}
+                    <div className="sticky top-0 z-40 bg-[#F2F2F7]/80 dark:bg-black/80 backdrop-blur-xl border-b border-black/5 dark:border-white/10 safe-top">
+                        <div className="px-5 pt-4 pb-3 flex justify-between items-end">
+                            <div>
+                                <h1 className="text-[34px] font-bold tracking-tight text-black dark:text-white leading-tight">Trip 2026</h1>
+                                <p className="text-[13px] font-medium text-gray-500 dark:text-gray-400 mt-0.5 uppercase tracking-wide">Jan 31 - Feb 19 · 19 Days</p>
+                            </div>
+                            <button onClick={toggleInstallGuide} className="w-8 h-8 rounded-full bg-gray-200/50 dark:bg-white/10 flex items-center justify-center active:scale-90 transition-transform">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#007AFF" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Main */}
+                    <main className="px-4 py-4 max-w-lg mx-auto min-h-screen fade-in safe-bottom">
+                        {currentTab === 'today' && <RenderToday switchTab={setCurrentTab} />}
+                        {currentTab === 'trip' && <RenderTrip expandedDayId={expandedDayId} toggleDay={toggleDay} openWeather={openWeather} />}
+                        {currentTab === 'info' && <RenderInfo />}
+                        {currentTab === 'guide' && <RenderGuide apiKey={apiKey} toggleApiModal={toggleApiModal} aiData={aiData} isFetching={isFetchingAi} fetchAiGuide={fetchAiGuide} getCurrentCity={getCurrentCity} />}
+                    </main>
+
+                    {/* Tab Bar */}
+                    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-[380px] h-[64px] bg-white/80 dark:bg-[#1C1C1E]/80 backdrop-blur-xl border border-white/20 dark:border-white/10 shadow-2xl rounded-[32px] p-1.5 flex items-center justify-between z-50 safe-bottom">
+                        <TabButton id="today" label="總覽" icon={<><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></>} currentTab={currentTab} setTab={setCurrentTab} />
+                        <TabButton id="trip" label="行程" icon={<><path d="M12 22s-8-4.5-8-11.8A8 8 0 0 1 12 2a8 8 0 0 1 8 8.2c0 7.3-8 11.8-8 11.8z"/><circle cx="12" cy="10" r="3"/></>} currentTab={currentTab} setTab={setCurrentTab} />
+                        <TabButton id="info" label="資訊" icon={<><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/><line x1="10" x2="8" y1="9" y2="9"/></>} currentTab={currentTab} setTab={setCurrentTab} />
+                        <TabButton id="guide" label="AI 攻略" icon={<><path d="M21 12a9 9 0 0 1-9 9m9-9a9 9 0 0 0-9-9m9 9H3m9 9a9 9 0 0 1-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9"/></>} currentTab={currentTab} setTab={setCurrentTab} isAi={true} />
+                    </div>
+
+                    {/* Modals */}
+                    {showInstallModal && <InstallModal toggle={toggleInstallGuide} />}
+                    {showApiModal && <ApiModal toggle={toggleApiModal} onSave={saveApiKeyFunc} />}
+                    {weatherModal.visible && <WeatherModal modal={weatherModal} close={closeWeather} />}
+                </div>
+            );
+        }
+
+        // --- Helpers & Sub-Components ---
+        function ApiInput({ onSave }) {
+            const inputRef = useRef(null);
+            return (
+                <>
+                    <input ref={inputRef} type="password" placeholder="貼上 API Key" className="w-full p-4 rounded-xl bg-gray-100 dark:bg-gray-800 mb-4 outline-none border-2 border-transparent focus:border-[#007AFF] dark:text-white transition-all text-[15px]" />
+                    <div className="flex gap-3">
+                        <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="flex-1 py-3.5 text-center rounded-xl bg-gray-100 dark:bg-gray-800 text-[15px] font-semibold text-gray-500 active:scale-95 transition-transform">取得 Key</a>
+                        <button onClick={() => onSave(inputRef.current.value)} className="flex-[2] py-3.5 rounded-xl bg-[#007AFF] text-white font-semibold text-[15px] shadow-lg shadow-blue-500/30 active:scale-95 transition-transform">儲存並啟動</button>
+                    </div>
+                </>
+            );
+        }
+
+        function TabButton({ id, label, icon, currentTab, setTab, isAi }) {
+            const isActive = currentTab === id;
+            let strokeColor = 'currentColor';
+            if (isActive) strokeColor = isAi ? '#AF52DE' : '#007AFF';
+            return (
+                <button onClick={() => setTab(id)} className={`flex-1 h-full rounded-[26px] flex flex-col items-center justify-center gap-1 transition-all duration-300 ${isActive ? 'bg-white dark:bg-[#2C2C2E] shadow-[0_2px_12px_rgba(0,0,0,0.08)]' : 'opacity-40 hover:opacity-60'}`}>
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={strokeColor} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{icon}</svg>
+                    <span className={`text-[10px] font-semibold tracking-wide ${isActive ? (isAi ? 'text-purple-500' : 'text-[#007AFF] dark:text-[#0A84FF]') : ''}`}>{label}</span>
+                </button>
+            );
+        }
+
+        function RenderToday({ switchTab }) {
+            const today = new Date();
+            const dateStr = `${today.getMonth() + 1}/${today.getDate()}`;
+            const todayData = TRIP.find(d => d.date === dateStr);
+            const tripStart = new Date(2026, 0, 31);
+            if (todayData) {
+                const todayFlight = FLIGHTS.find(f => f.t.startsWith(dateStr));
+                const currentHotel = HOTELS.find(h => h.t === todayData.city);
+                return (
+                    <div className="space-y-6 pb-24">
+                        <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-6 shadow-sm text-center relative overflow-hidden">
+                            <div className="absolute top-0 left-0 w-full h-1.5 bg-gradient-to-r from-[#007AFF] to-[#AF52DE]"></div>
+                            <h2 className="text-[13px] font-bold text-gray-400 uppercase tracking-widest mb-1">{todayData.date} · {todayData.wk}</h2>
+                            <h1 className="text-[42px] font-bold dark:text-white mb-6 tracking-tight">{todayData.city}</h1>
+                            <button onClick={() => switchTab('guide')} className="w-full py-3.5 rounded-[14px] bg-gray-50 dark:bg-[#2C2C2E] text-[#AF52DE] text-[15px] font-semibold flex items-center justify-center gap-2 active:bg-gray-100 dark:active:bg-gray-700 transition-colors">✨ 查看今日 AI 攻略<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+                        </div>
+                        <WeatherWidget city={todayData.city} />
+                        {todayFlight && (
+                            <div>
+                                <h3 className="ml-4 mb-2 text-[13px] font-semibold text-gray-500 uppercase tracking-wide">今日航班</h3>
+                                <div className="bg-[#1C1C1E] text-white rounded-[22px] p-5 shadow-xl relative overflow-hidden">
+                                    <div className="flex justify-between items-start mb-6 relative z-10"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center text-xl">✈️</div><div><div className="text-[17px] font-bold">{todayFlight.n.split(' ')[0]}</div><div className="text-[13px] text-gray-400 font-medium">{todayFlight.n.split(' ').slice(1).join(' ')}</div></div></div><div className="text-right"><div className="text-[11px] font-bold text-[#30D158] bg-[#30D158]/20 px-2 py-0.5 rounded text-center mb-1">ON TIME</div></div></div>
+                                    <div className="flex justify-between items-end relative z-10"><div><div className="text-[13px] text-gray-400 mb-0.5">Time</div><div className="text-[28px] font-medium leading-none">{todayFlight.v}</div></div><div className="text-right"><div className="text-[13px] text-gray-400 mb-0.5">Date</div><div className="text-[17px] font-medium leading-none">{todayFlight.t.split(' · ')[0]}</div></div></div>
+                                    {todayFlight.u && <a href={todayFlight.u} target="_blank" rel="noreferrer" className="mt-5 block w-full py-3 bg-white text-black text-center rounded-[12px] text-[15px] font-bold hover:bg-gray-100 transition-colors">前往報到 / 查看動態</a>}
+                                </div>
+                            </div>
+                        )}
+                        {currentHotel && (
+                            <div>
+                                <h3 className="ml-4 mb-2 text-[13px] font-semibold text-gray-500 uppercase tracking-wide">住宿</h3>
+                                <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-5 shadow-sm active:scale-[0.99] transition-transform">
+                                    <div className="flex justify-between items-start"><div><div className="text-[17px] font-bold dark:text-white leading-snug">{currentHotel.v}</div><div className="text-[15px] text-gray-500 mt-1">{currentHotel.d}</div><div className="flex gap-3 mt-3"><a href={`https://maps.google.com/?q=${encodeURIComponent(currentHotel.l)}`} target="_blank" rel="noreferrer" className="h-8 px-3 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[#007AFF] text-[13px] font-semibold flex items-center gap-1.5"><svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>導航</a>{currentHotel.u && <a href={currentHotel.u} target="_blank" rel="noreferrer" className="h-8 px-3 rounded-full bg-orange-50 dark:bg-orange-500/10 text-orange-500 text-[13px] font-semibold flex items-center gap-1.5">訂單詳情</a>}</div></div><div className="text-[11px] font-bold bg-gray-100 dark:bg-[#2C2C2E] text-gray-500 dark:text-gray-300 px-2 py-1 rounded-md">{currentHotel.dt}</div></div>
+                                </div>
+                            </div>
+                        )}
+                        <div><h3 className="ml-4 mb-2 text-[13px] font-semibold text-gray-500 uppercase tracking-wide">今日行程</h3><div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] px-2 py-2 shadow-sm">{todayData.tl.map((e, idx) => (<TimelineItem key={idx} e={e} isLast={idx === todayData.tl.length - 1} />))}</div></div>
+                    </div>
+                );
+            } else {
+                const diffTime = tripStart - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays > 0 ? (
+                    <div className="flex flex-col items-center justify-center h-[70vh] text-center"><div className="w-24 h-24 rounded-full bg-gray-100 dark:bg-[#1C1C1E] flex items-center justify-center text-5xl mb-8 shadow-sm">✈️</div><h2 className="text-gray-500 dark:text-gray-400 text-[15px] font-medium mb-2">距離出發還有</h2><div className="text-7xl font-bold dark:text-white mb-4 tracking-tighter">{diffDays}<span className="text-2xl font-medium ml-2 text-gray-400">天</span></div><p className="text-[15px] text-gray-400 mb-10">Jan 31, 2026 · Taipei ➔ Dubai</p><div className="bg-white dark:bg-[#1C1C1E] w-full rounded-[22px] p-6 text-left shadow-sm"><h3 className="text-[17px] font-bold mb-4 dark:text-white">行前檢查清單</h3><div className="space-y-4">{['護照有效期檢查', '網卡/漫遊開通', '歐元現金換匯'].map((item, i) => (<label key={i} className="flex items-center gap-4 text-[15px] text-gray-700 dark:text-gray-200 cursor-pointer"><input type="checkbox" className="w-5 h-5 rounded-full border-gray-300 text-[#007AFF] focus:ring-[#007AFF]" /><span>{item}</span></label>))}</div></div></div>
+                ) : (
+                    <div className="flex flex-col items-center justify-center h-[70vh] text-center opacity-50"><div className="text-5xl mb-4">👋</div><h2 className="text-2xl font-bold dark:text-white">旅程已結束</h2><p className="text-[15px] text-gray-500 mt-2">期待下一次的冒險！</p></div>
+                );
+            }
+        }
+
+        function WeatherWidget({ city }) {
+            const [data, setData] = useState(null);
+            const [error, setError] = useState(false);
+            useEffect(() => {
+                const coords = CITY_COORDS[city];
+                if(!coords) return;
+                fetch(`https://api.open-meteo.com/v1/forecast?latitude=${coords.lat}&longitude=${coords.lng}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,is_day&daily=temperature_2m_max,temperature_2m_min,sunrise,sunset&timezone=auto`).then(res => res.json()).then(data => setData(data)).catch(() => setError(true));
+            }, [city]);
+            if (error) return <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-6 text-center text-gray-500">天氣載入失敗</div>;
+            if (!data) return <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-8 flex justify-center"><div className="animate-spin h-8 w-8 border-4 border-[#007AFF] border-t-transparent rounded-full"></div></div>;
+            const current = data.current;
+            const daily = data.daily;
+            const weather = getWeatherText(current.weather_code, current.is_day === 1);
+            return (
+                <div className="bg-gradient-to-br from-[#5AC8FA] to-[#007AFF] text-white rounded-[22px] p-6 shadow-lg relative overflow-hidden min-h-[200px]"><div className="flex justify-between items-start mb-8"><div><div className="text-[64px] font-light leading-none tracking-tight">{Math.round(current.temperature_2m)}°</div><div className="text-[19px] font-medium opacity-90 mt-1">{weather.text}</div><div className="text-[15px] opacity-75 font-medium mt-1">H:{Math.round(daily.temperature_2m_max[0])}° L:{Math.round(daily.temperature_2m_min[0])}°</div></div><div className="text-[56px] drop-shadow-md">{weather.icon}</div></div><div className="grid grid-cols-2 gap-3 bg-white/10 rounded-[14px] p-4 backdrop-blur-md border border-white/10"><div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider opacity-70">體感濕度</span><span className="text-[17px] font-semibold">{current.relative_humidity_2m}%</span></div><div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider opacity-70">風速</span><span className="text-[17px] font-semibold">{current.wind_speed_10m} <span className="text-[12px] font-normal">km/h</span></span></div><div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider opacity-70">日出</span><span className="text-[15px] font-medium">{daily.sunrise[0].split('T')[1]}</span></div><div className="flex flex-col gap-0.5"><span className="text-[10px] uppercase tracking-wider opacity-70">日落</span><span className="text-[15px] font-medium">{daily.sunset[0].split('T')[1]}</span></div></div></div>
+            );
+        }
+
+        function RenderTrip({ expandedDayId, toggleDay, openWeather }) {
+            return (
+                <div className="space-y-4 pb-24">
+                    {TRIP.map(d => (
+                        <div key={d.id} className="bg-white dark:bg-[#1C1C1E] rounded-[22px] shadow-sm overflow-hidden transition-all duration-300">
+                            <div onClick={() => toggleDay(d.id)} className="active:bg-gray-50 dark:active:bg-[#2C2C2E] transition-colors cursor-pointer p-5 flex justify-between items-center"><div className="flex items-center gap-4"><div className="flex flex-col"><span className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">{d.date} · {d.wk}</span><h2 className="text-[22px] font-bold dark:text-white leading-tight">{d.city}</h2></div><button onClick={(e) => openWeather(d.city, e)} className="flex items-center gap-1.5 bg-gray-100 dark:bg-[#2C2C2E] px-3 py-1.5 rounded-full transition-colors hover:bg-gray-200 dark:hover:bg-[#3A3A3C]"><span className="text-[13px]">{getWeatherText(d.c === 'Sunny' ? 0 : d.c === 'Rain' ? 61 : 3, true).icon}</span><span className="text-[13px] font-semibold text-gray-600 dark:text-gray-300">{d.t}</span></button></div><div className={`rotate-icon ${expandedDayId === d.id ? 'open' : ''} w-8 h-8 bg-gray-100 dark:bg-[#2C2C2E] rounded-full flex items-center justify-center text-gray-500`}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="m9 18 6-6-6-6"/></svg></div></div>
+                            <div className={`accordion-content ${expandedDayId === d.id ? 'open' : ''}`}><div className="px-5 pb-5"><div className="border-t border-gray-100 dark:border-gray-800 pt-2">{d.tl.map((e, idx) => (<TimelineItem key={idx} e={e} isLast={idx === d.tl.length - 1} embedMap={true} />))}</div></div></div>
+                        </div>
+                    ))}
+                    <div className="text-center py-8 text-gray-400 text-[13px] font-medium">✈️ 旅程結束</div>
+                </div>
+            );
+        }
+
+        function TimelineItem({ e, isLast, embedMap = false }) {
+            return (
+                <div className="py-5 relative">
+                    <div className="flex gap-4"><div className="w-12 shrink-0 text-right pt-1"><span className="text-[13px] font-semibold text-gray-400 tabular-nums">{e.tm}</span></div><div className="flex-1 min-w-0"><div className="flex justify-between items-start"><h4 className={`text-[17px] font-bold leading-snug pr-2 ${e.eat?'text-[#FF9500]':e.imp?'text-[#007AFF]':e.buy?'text-[#AF52DE]':'dark:text-white'}`}>{e.ti}</h4>{e.loc && <a href={`https://maps.google.com/?q=${encodeURIComponent(e.loc)}`} target="_blank" rel="noreferrer" onClick={(ev) => ev.stopPropagation()} className="w-8 h-8 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center shrink-0 text-[#007AFF] hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></a>}</div><p className="text-[15px] text-gray-600 dark:text-gray-300 mt-1.5 leading-relaxed">{e.d}</p>{(e.desc || e.menu || e.tel || e.l || (embedMap && e.loc)) && (<div className="mt-4 bg-gray-50 dark:bg-[#2C2C2E] rounded-[16px] p-3.5 text-[14px] space-y-3 border border-transparent dark:border-white/5">{e.desc && <div className="text-gray-600 dark:text-gray-300 leading-relaxed">{e.desc}</div>}{e.menu && <div className="flex gap-2.5 items-start"><span className="text-[#FF9500] shrink-0 text-[16px]">🍽️</span><span className="text-gray-700 dark:text-gray-200 font-medium">{e.menu}</span></div>}{e.tel && <div className="flex gap-2.5 items-center"><span className="text-[#30D158] shrink-0 text-[16px]">📞</span><a href={`tel:${e.tel}`} className="text-[#007AFF] font-medium hover:underline">{e.tel}</a></div>}{e.l && <div className="flex flex-wrap gap-2 pt-1">{e.l.map((link, i) => <a key={i} href={link.u} target="_blank" rel="noreferrer" className="text-[13px] px-3 py-1.5 rounded-lg bg-white dark:bg-[#3A3A3C] border border-gray-200 dark:border-transparent dark:text-gray-200 flex items-center gap-1.5 font-medium shadow-sm active:scale-95 transition-all">🔗 {link.t}</a>)}</div>}{embedMap && e.loc && (e.imp || e.eat || e.buy || e.tm.includes(':')) && (<div className="pt-2 rounded-[12px] overflow-hidden"><iframe className="map-frame w-full h-[150px] border-0" loading="lazy" referrerPolicy="no-referrer-when-downgrade" src={`https://maps.google.com/maps?q=${encodeURIComponent(e.loc)}&t=&z=15&ie=UTF8&iwloc=&output=embed`}></iframe></div>)}</div>)}</div></div>{!isLast && <div className="absolute bottom-0 right-0 w-[calc(100%-64px)] h-[0.5px] bg-gray-200 dark:bg-gray-700/50"></div>}
+                </div>
+            );
+        }
+
+        function RenderInfo() {
+            return (
+                <div className="space-y-8 pb-24">
+                    <div><h3 className="ml-4 mb-2 text-[13px] font-semibold text-gray-500 uppercase tracking-wide">航班資訊</h3><div className="apple-list-group">{FLIGHTS.map((f, i) => (<div key={i} className="apple-list-item px-4 py-4 flex justify-between items-center bg-white dark:bg-[#1C1C1E] active:bg-gray-50 dark:active:bg-[#2C2C2E] transition-colors"><div className="dark:text-white"><div className="text-[16px] font-semibold">{f.t}</div><div className="text-[13px] text-gray-500 mt-0.5">{f.n}</div></div><div className="text-right"><div className="text-[16px] text-gray-900 dark:text-gray-200 font-medium tabular-nums">{f.v}</div>{f.u && <a href={f.u} target="_blank" rel="noreferrer" className="text-[12px] text-[#007AFF] font-medium mt-0.5 inline-block">查看狀態 ›</a>}</div></div>))}</div></div>
+                    <div><h3 className="ml-4 mb-2 text-[13px] font-semibold text-gray-500 uppercase tracking-wide">住宿資訊</h3><div className="apple-list-group">{HOTELS.map((h, i) => (<div key={i} className="apple-list-item px-4 py-4 flex justify-between items-start bg-white dark:bg-[#1C1C1E] active:bg-gray-50 dark:active:bg-[#2C2C2E] transition-colors"><div><div className="flex items-center gap-2 mb-1"><div className="text-[16px] font-bold dark:text-white">{h.t}</div><div className="text-[11px] font-bold text-[#007AFF] bg-blue-50 dark:bg-blue-500/20 px-1.5 py-0.5 rounded-md">{h.dt}</div></div><div className="text-[15px] dark:text-gray-200 font-medium">{h.v}</div><div className="text-[13px] text-gray-500 mt-0.5 leading-tight">{h.d}</div><div className="flex items-center gap-3 mt-2"><div className="text-[12px] text-[#FF9500] font-medium">{h.n}</div>{h.u && <a href={h.u} target="_blank" rel="noreferrer" className="text-[12px] text-[#007AFF] font-medium flex items-center gap-1">預訂連結 ›</a>}</div></div><a href={`https://maps.google.com/?q=${encodeURIComponent(h.l)}`} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full bg-gray-100 dark:bg-[#2C2C2E] flex items-center justify-center shrink-0 text-[#007AFF]"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg></a></div>))}</div></div>
+                </div>
+            );
+        }
+
+        function RenderGuide({ apiKey, toggleApiModal, aiData, isFetching, fetchAiGuide, getCurrentCity }) {
+            const todayStr = new Date().toLocaleDateString();
+            const currentCity = getCurrentCity();
+            const hasTodayData = aiData && aiData.date === todayStr && aiData.content;
+            let guideGeneral = "", guideTransport = "", guideShopping = "";
+            if (hasTodayData) { const parts = aiData.content.split('|||'); guideGeneral = parts[0] || ""; guideTransport = parts[1] || ""; guideShopping = parts[2] || ""; }
+
+            useEffect(() => {
+                if(apiKey && !hasTodayData && !isFetching) { const timer = setTimeout(() => fetchAiGuide(currentCity), 500); return () => clearTimeout(timer); }
+            }, [apiKey, hasTodayData, isFetching, currentCity]);
+
+            return (
+                <div className="pb-24 space-y-6">
+                    <div className="flex items-center justify-between px-2 pt-2"><h2 className="text-[28px] font-bold dark:text-white tracking-tight">AI 每日攻略 <span className="text-[12px] font-bold text-[#AF52DE] bg-purple-50 dark:bg-purple-500/20 px-2 py-0.5 rounded-full ml-1 align-middle">BETA</span></h2><button onClick={toggleApiModal} className="text-[13px] bg-gray-200 dark:bg-[#2C2C2E] px-3.5 py-1.5 rounded-full text-gray-700 dark:text-gray-300 font-medium active:scale-95 transition-transform">⚙️ 設定 Key</button></div>
+                    {!apiKey ? (
+                        <div className="bg-gradient-to-br from-[#5856D6] to-[#AF52DE] rounded-[22px] p-8 text-white text-center shadow-lg"><div className="text-5xl mb-4">✨</div><h3 className="text-xl font-bold mb-3">啟用智慧導遊</h3><p className="text-white/80 text-[15px] mb-8 leading-relaxed">輸入您的 API Key，讓 AI 根據今日的具體行程（如 {currentCity} 的景點），即時生成天氣穿搭建議、交通對策與購物情報。</p><button onClick={toggleApiModal} className="w-full bg-white text-[#5856D6] py-3.5 rounded-[14px] font-bold text-[15px] shadow-xl active:scale-95 transition-transform">立即啟用</button></div>
+                    ) : hasTodayData ? (
+                        <>
+                            <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-6 shadow-sm border border-transparent dark:border-white/5"><div className="flex items-center gap-2 mb-5"><span className="text-[11px] font-bold bg-[#AF52DE]/10 text-[#AF52DE] px-2 py-0.5 rounded">TODAY</span><span className="text-[13px] text-gray-400 font-medium">{todayStr} · {currentCity}</span></div><div className="prose dark:prose-invert prose-sm max-w-none prose-p:text-gray-700 dark:prose-p:text-gray-300 prose-headings:text-black dark:prose-headings:text-white leading-7" dangerouslySetInnerHTML={{ __html: marked.parse(guideGeneral) }}></div></div>
+                            <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-6 shadow-sm border border-transparent dark:border-white/5"><div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-blue-50 dark:bg-blue-500/20 flex items-center justify-center text-xl">🚂</div><h3 className="text-[17px] font-bold dark:text-white">交通攻略</h3></div><div className="prose dark:prose-invert prose-sm max-w-none prose-p:text-gray-700 dark:prose-p:text-gray-300 leading-7" dangerouslySetInnerHTML={{ __html: marked.parse(guideTransport) }}></div></div>
+                            <div className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-6 shadow-sm border border-transparent dark:border-white/5"><div className="flex items-center gap-3 mb-4"><div className="w-10 h-10 rounded-full bg-orange-50 dark:bg-orange-500/20 flex items-center justify-center text-xl">🛍️</div><h3 className="text-[17px] font-bold dark:text-white">必買清單</h3></div><div className="prose dark:prose-invert prose-sm max-w-none prose-p:text-gray-700 dark:prose-p:text-gray-300 leading-7" dangerouslySetInnerHTML={{ __html: marked.parse(guideShopping) }}></div></div>
+                            <div className="flex justify-end pt-2"><button onClick={() => fetchAiGuide(currentCity, true)} className="text-[13px] text-gray-400 font-medium flex items-center gap-1.5 hover:text-[#AF52DE] transition-colors"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>重新生成</button></div>
+                        </>
+                    ) : (
+                        <div id="ai-loading-state" className="bg-white dark:bg-[#1C1C1E] rounded-[22px] p-10 text-center shadow-sm"><div className="animate-spin h-8 w-8 border-4 border-[#AF52DE] border-t-transparent rounded-full mx-auto mb-5"></div><p className="text-gray-500 dark:text-gray-400 text-[15px]">正在分析今日行程與天氣...</p></div>
+                    )}
+                </div>
+            );
+        }
+
+        function InstallModal({ toggle }) { return <div className="fixed inset-0 z-[70] flex items-center justify-center px-6 animate-in fade-in"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={toggle}></div><div className="relative bg-white dark:bg-[#1C1C1E] p-6 rounded-[24px] max-w-sm w-full shadow-2xl scale-100 transition-transform"><div className="text-center"><div className="text-4xl mb-4">🌍</div><h3 className="text-xl font-bold mb-2 dark:text-white">安裝到主畫面</h3><p className="text-[15px] text-gray-500 mb-6 leading-relaxed">隱藏網址列，獲得如同原生 App 的全螢幕體驗：</p><ol className="text-left text-[15px] space-y-4 bg-gray-100 dark:bg-gray-800/50 p-5 rounded-xl dark:text-gray-200"><li className="flex gap-3 items-center">1. 點擊 Safari 下方 <svg className="inline text-[#007AFF]" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg> 分享</li><li>2. 選擇「加入主畫面」</li><li>3. 點擊「加入」</li></ol></div></div></div>; }
+        function ApiModal({ toggle, onSave }) { return <div className="fixed inset-0 z-[80] flex items-center justify-center px-6 animate-in fade-in"><div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={toggle}></div><div className="relative bg-white dark:bg-[#1C1C1E] p-6 rounded-[24px] max-w-sm w-full shadow-2xl"><h3 className="text-xl font-bold mb-2 dark:text-white">啟動 AI 導遊 ✨</h3><p className="text-[15px] text-gray-500 mb-6">請輸入 Google Gemini API Key 以啟用每日自動攻略功能。</p><ApiInput onSave={onSave} /></div></div>; }
+        function WeatherModal({ modal, close }) { return <div className="fixed inset-0 z-[60] flex items-center justify-center px-6 animate-in fade-in"><div className="absolute inset-0 bg-black/40 backdrop-blur-md" onClick={close}></div><div className="relative w-full max-w-sm rounded-[32px] overflow-hidden shadow-2xl bg-gradient-to-b from-[#4CA2CD] to-[#67B8E6] text-white p-8 scale-100 transition-transform"><button onClick={close} className="absolute top-5 right-5 p-2 bg-white/20 rounded-full hover:bg-white/30 transition-colors"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button><div className="flex flex-col items-center">{modal.loading && <div className="animate-spin h-8 w-8 border-4 border-white border-t-transparent rounded-full mb-4"></div>}{!modal.loading && modal.error && <p>天氣載入失敗</p>}{!modal.loading && modal.data && <><h2 className="text-3xl font-semibold mb-2">{modal.city}</h2><div className="text-8xl font-thin mb-1 tracking-tighter">{Math.round(modal.data.current.temperature_2m)}°</div><div className="text-xl opacity-90 mb-6 font-medium">{getWeatherText(modal.data.current.weather_code, true).text}</div><div className="flex gap-6 text-xl opacity-90 font-medium"><span>H: {Math.round(modal.data.daily.temperature_2m_max[0])}°</span><span>L: {Math.round(modal.data.daily.temperature_2m_min[0])}°</span></div></>}</div></div></div>; }
+        
+        function getWeatherText(code, isDay) {
+            if(code === 0) return {icon: isDay?'☀️':'🌙', text:'晴朗'};
+            if(code <= 3) return {icon: isDay?'⛅':'☁️', text:'多雲'};
+            if(code <= 48) return {icon:'🌫️', text:'起霧'};
+            if(code <= 67) return {icon:'🌧️', text:'雨天'};
+            if(code <= 77) return {icon:'❄️', text:'下雪'};
+            if(code <= 82) return {icon:'⛈️', text:'雷雨'};
+            return {icon:'🌧️', text:'陣雨'};
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
